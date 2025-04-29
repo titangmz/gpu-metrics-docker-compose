@@ -1,0 +1,94 @@
+services:
+  dcgm_exporter:
+    user: "root"
+    image: nvidia/dcgm-exporter:${DCGM_EXPORTER_IMAGE_TAG:-4.1.1-4.0.4-ubuntu22.04}
+    container_name: gpu_metrics_dcgm_exporter
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    environment:
+      - DCGM_EXPORTER_NO_HOSTNAME=1
+    cap_add:
+      - SYS_ADMIN
+    ports:
+      - "${DCGM_EXPORTER_HOST_PORT:-9400}:9400"
+    networks:
+      - gpu_metrics
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9400/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  prometheus:
+    user: "root"
+    image: prom/prometheus:${PROMETHEUS_IMAGE_TAG:-v3.3.0}
+    container_name: gpu_metrics_prometheus
+    ports:
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
+    restart: unless-stopped
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./data/prometheus:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+      - --storage.tsdb.retention.time=${PROMETHEUS_STORAGE_TSDB_RETENTION_TIME:-30d}
+    networks:
+      - gpu_metrics
+    env_file:
+      - .env
+    depends_on:
+      - dcgm_exporter
+
+  grafana:
+    user: "root"
+    image: grafana/grafana:${GRAFANA_IMAGE_TAG:-11.6.1-ubuntu}
+    container_name: gpu_metrics_grafana
+    ports:
+      - "${GRAFANA_HOST_PORT:-3000}:3000"
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/etc/dashboards:ro
+    networks:
+      - gpu_metrics
+    env_file:
+      - .env
+    depends_on:
+      - prometheus
+
+  node_exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: node_exporter
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+    networks:
+      - gpu_metrics
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  gpu_metrics:
+    driver: bridge

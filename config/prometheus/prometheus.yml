@@ -1,0 +1,42 @@
+# Global Prometheus configuration
+global:
+  # How frequently to scrape targets
+  scrape_interval: 15s
+  # How frequently to evaluate rules
+  evaluation_interval: 15s
+  # How long until a scrape request times out
+  scrape_timeout: 10s
+  # Labels applied to all time series and alerts
+  external_labels:
+    monitor: 'gpu-monitoring'
+
+# Load and evaluate rules in this file
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# A scrape configuration containing endpoints to scrape
+scrape_configs:
+  # NVIDIA DCGM Exporter metrics
+  - job_name: 'dcgm'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['dcgm_exporter:9400']
+        labels:
+          service: 'gpu-metrics'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # Node Exporter metrics
+  - job_name: 'node_exporter'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['node_exporter:9100']
+        labels:
+          service: 'node-metrics'
